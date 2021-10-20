@@ -1,0 +1,19 @@
+---
+- hosts: kubecluster
+  remote_user: ubuntu
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: yes
+  connection: ssh
+
+  tasks:
+     - name: Update apt cache
+       apt:
+         update_cache: yes
+
+     - name: Run do-release-upgrade non-interactively.
+       command: do-release-upgrade -f DistUpgradeViewNonInteractive
+
+     - name: restart machine
+       reboot:

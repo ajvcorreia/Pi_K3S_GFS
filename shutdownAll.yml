@@ -1,0 +1,11 @@
+---
+- hosts: kubecluster
+  remote_user: ubuntu
+  become: yes
+  become_method: sudo
+  become_user: root
+  connection: ssh
+
+  tasks:
+     - name: Unconditionally shut down the machine with all defaults
+       community.general.shutdown:

@@ -1,0 +1,51 @@
+---
+- hosts: vms
+  remote_user: acorreia
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: yes
+  connection: ssh
+
+  tasks:
+     - name: Update all packages to their latest version
+       apt:
+         name: "*"
+         state: latest
+         update_cache: yes
+
+- hosts: pi
+  remote_user: pi
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: yes
+  connection: ssh
+
+  tasks:
+     - name: Update apt cache
+       apt:
+         update_cache: yes
+
+     - name: Update all packages to their latest version
+       apt:
+         name: "*"
+         state: latest
+
+- hosts: kubecluster
+  remote_user: ubuntu
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: yes
+  connection: ssh
+
+  tasks:
+     - name: Update apt cache
+       apt:
+         update_cache: yes
+
+     - name: Update all packages to their latest version
+       apt:
+         name: "*"
+         state: latest

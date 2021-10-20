@@ -1,0 +1,124 @@
+---
+- hosts: kubecluster
+  remote_user: ubuntu
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: yes
+  connection: ssh
+
+  tasks:
+     - name: modprobe fuse
+       become:
+       shell: |
+               modprobe fuse
+
+    #  - name: add glusterfs apt key
+    #    ansible.builtin.apt_key:
+    #      url: https://download.gluster.org/pub/gluster/glusterfs/3.12/rsa.pub
+    #      state: present
+
+    #  - name: add glusterfs repository
+    #    ansible.builtin.apt_repository:
+    #      repo: ppa:gluster/glusterfs-3.12
+
+     - name: install xfsprogs and gluster-server
+       apt:
+         name: "xfsprogs, glusterfs-server"
+         state: latest
+         update_cache: yes
+
+     - name: enable and start gluster
+       ansible.builtin.systemd:
+         name: glusterd
+         enabled: yes
+
+     - name: enable and start gluster
+       ansible.builtin.systemd:
+         state: started
+         name: glusterd
+  
+- hosts: master
+  remote_user: ubuntu
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: yes
+  connection: ssh
+
+  tasks:
+     - name: probe peers
+       become: yes
+       shell: |
+               gluster peer probe {{ item }}
+       with_items: "{{ groups['workers'] }}"
+
+     - name: create brick folder
+       become: yes
+       ansible.builtin.file:
+         path: /mnt/glusterfs/kubevol/brick1/
+         state: directory
+
+     - name: create gluster brick
+       become: yes
+       shell: |
+               gluster volume create brick1 {{ansible_default_ipv4.address}}:/mnt/glusterfs/kubevol/brick1/ force
+       register: result
+       failed_when: "'ERROR:' in result.stderr"
+
+     - name: start gluster volume
+       become: yes
+       shell: |
+               gluster volume start brick1
+       register: result
+       failed_when: "'ERROR:' in result.stderr"
+
+- hosts: kubecluster
+  remote_user: ubuntu
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: yes
+  connection: ssh
+
+  tasks:
+     - name: create mount point
+       ansible.builtin.file:
+         path: /mnt/general-volume
+         state: directory
+
+     - name: start gluster volumne
+       shell: |
+               mount -t glusterfs  {{ansible_default_ipv4.address}}:/brick1 /mnt/general-volume
+
+     - name: create volume mount script
+       become: yes
+       copy:
+         dest: /root/mount-volumes.sh
+         content: |
+                  #!/bin/sh
+
+                  function check_glusterd_running()
+                  {
+                  # Explanation of why ps command is used this way:
+                  # https://stackoverflow.com/questions/9117507/linux-unix-command-to-determine-if-process-is-running
+                          if ! ps cax | grep -w '[g]lusterd' > /dev/null 2>&1
+                          then
+                                  echo "ERROR: Glusterd is not running"
+                                  exit 1
+                          fi
+                  }
+
+                  while [[ !  -z  $(check_glusterd_running)  ]]; do
+                    sleep 1s;
+                  done
+
+                  echo "Glusterd is running"
+
+                  # =====> start volume mounts <======
+                  mount -t glusterfs  {{ansible_default_ipv4.address}}:/brick1 /mnt/general-volume
+    
+     - name:  run gluster mount script on reboot
+       ansible.builtin.cron:
+         special_time: reboot
+         job: /root/mount-volumes.sh
